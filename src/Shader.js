@@ -1,6 +1,6 @@
 class Shader{
 
-    constructor(gl, vsSource, fsSource){
+    constructor(gl, vsSource, fsSource, transformFeedbackVar){
         this.gl = gl;
 
         const vert = loadShader(gl, gl.VERTEX_SHADER, vsSource);
@@ -9,6 +9,10 @@ class Shader{
         this.id = gl.createProgram();
         gl.attachShader(this.id, vert);
         gl.attachShader(this.id, frag);
+
+        if(transformFeedbackVar !== undefined){
+            gl.transformFeedbackVarying(this.id, transformFeedbackVar, gl.SEPARATE_ATTRIBS);
+        }
 
         gl.linkProgram(this.id);
 
