@@ -11,6 +11,9 @@ import fsSource from './shaders/mat1/f.frag?raw';
 import skyVsSource from './shaders/skybox_grad/skybox_grad.vert?raw';
 import skyFsSource from './shaders/skybox_grad/skybox_grad.frag?raw';
 
+import updateVsSource from './shaders/update/update.vert?raw';
+import updateFsSource from './shaders/update/update.frag?raw';
+
 class WebGLRenderer extends Renderer {
 
     //---------------------------------------
@@ -27,6 +30,8 @@ class WebGLRenderer extends Renderer {
         // setup shaders
         this.shader = new Shader(this.gl, vsSource, fsSource);
         this.skyShader = new Shader(this.gl, skyVsSource, skyFsSource);
+        // shader for update position
+        this.updateShader = new Shader(this.gl, updateVsSource, updateFsSource, ['newPos']);
 
         // setup datas
         this.vao = initVAO(this.gl);
@@ -38,6 +43,82 @@ class WebGLRenderer extends Renderer {
         // setup camera
         this.camera = new Camera(5, 4, 7, 0, 1, 0, 0, 0, 45);
         this.camera.lookAt(0, 0, 0);
+    }
+
+    //---------------------------------------
+    init(){
+
+        let gl = this.gl;
+        this.particleNum = 1000;
+
+        let r = 10;
+        const positions = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(r)).flat());
+        const velocities = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(2)).flat());
+
+        this.position1Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
+        this.position2Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
+        this.velocityBuffer = this.createBuffer(gl, velocities, gl.STATIC_DRAW);
+
+        //-----------------
+        this.updatePositionPrgLocs = {
+            pos: gl.getAttribLocation(this.updateShader, 'pos'),
+            vel: gl.getAttribLocation(this.updateShader, 'vel'),
+            deltaTime: gl.getAttribLocation(this.updateShader, 'deltaTime')
+        }
+        // TODO: draw用のパーティクルについて上と同様のことを行う．
+        // this.drawParticlePrgLocs = {
+        //     pos: gl.getAttribLocation(this.updateShader, 'pos'),
+        //     vel: gl.getAttribLocation(this.updateShader, 'vel'),
+        //     deltaTime: gl.getAttribLocation(this.updateShader, 'deltaTime')
+        // }
+
+        //-----------------
+        this.updatePositionVAO1 = this.createVertexArray(gl, [
+            [this.updatePositionPrgLocs,pos, this.position1Buffer], 
+            [this.updatePositionPrgLocs.vel, this.velocityBuffer]
+        ]);
+        this.updatePositionVAO2 = this.createVertexArray(gl, [
+            [this.updatePositionPrgLocs.pos, this.position2Buffer], 
+            [this.updatePositionPrgLocs.vel, this.velocityBuffer],
+        ]);
+        // TODO: 同上
+
+        //-----------------
+        tf1 = this.createTransformFeedback(gl, this.position1Buffer);
+        tf2 = this.createTransformFeedback(gl, this.position2Buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+
+    }
+
+    createTransformFeedback(gl, buffer){
+        const tf = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer);
+        return tf;
+    }
+
+    createBuffer(gl, sizeOrData, usage){
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, sizeOrData, usage);
+    }
+
+    createVertexArray(gl, nameBufferPair){
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        for(const [name, buffer] of nameBufferPair){
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.enableVertexAttribArray(name);
+            gl.vertexAttribPointer(name, 3, gl.FLOAT, false, 0, 0);
+        }
+        return vao;
+    }
+
+    randomInsideSphere(r){
+        let result = vec3.create();
+        vec3.random(result, Math.random()*r);
+        return [result[0], result[1], result[2]];
     }
 
     //---------------------------------------
