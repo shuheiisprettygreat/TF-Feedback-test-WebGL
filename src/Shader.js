@@ -11,7 +11,7 @@ class Shader{
         gl.attachShader(this.id, frag);
 
         if(transformFeedbackVar){
-            gl.transformFeedbackVaryings(this.id, transformFeedbackVar, gl.INTERLEAVED_ATTRIBS);
+            gl.transformFeedbackVaryings(this.id, transformFeedbackVar, gl.SEPARATE_ATTRIBS);
         }
 
         gl.linkProgram(this.id);

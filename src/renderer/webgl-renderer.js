@@ -14,6 +14,9 @@ import skyFsSource from './shaders/skybox_grad/skybox_grad.frag?raw';
 import updateVsSource from './shaders/update/update.vert?raw';
 import updateFsSource from './shaders/update/update.frag?raw';
 
+import drawVsSource from './shaders/draw/draw.vert?raw';
+import drawFsSource from './shaders/draw/draw.frag?raw';
+
 class WebGLRenderer extends Renderer {
 
     //---------------------------------------
@@ -32,6 +35,8 @@ class WebGLRenderer extends Renderer {
         this.skyShader = new Shader(this.gl, skyVsSource, skyFsSource);
         // shader for update position
         this.updateShader = new Shader(this.gl, updateVsSource, updateFsSource, ['newPos']);
+        // shader for drawing particles
+        this.drawShader = new Shader(this.gl, drawVsSource, drawFsSource);
 
         // setup datas
         this.vao = initVAO(this.gl);
@@ -55,40 +60,65 @@ class WebGLRenderer extends Renderer {
         const positions = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(r)).flat());
         const velocities = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(2)).flat());
 
+        // console.log(positions);
+        // console.log(velocities);
+
         this.position1Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
         this.position2Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
         this.velocityBuffer = this.createBuffer(gl, velocities, gl.STATIC_DRAW);
 
         //-----------------
         this.updatePositionPrgLocs = {
-            pos: gl.getAttribLocation(this.updateShader, 'pos'),
-            vel: gl.getAttribLocation(this.updateShader, 'vel'),
-            deltaTime: gl.getAttribLocation(this.updateShader, 'deltaTime')
+            pos: gl.getAttribLocation(this.updateShader.id, 'pos'),
+            vel: gl.getAttribLocation(this.updateShader.id, 'vel'),
         }
-        // TODO: draw用のパーティクルについて上と同様のことを行う．
-        // this.drawParticlePrgLocs = {
-        //     pos: gl.getAttribLocation(this.updateShader, 'pos'),
-        //     vel: gl.getAttribLocation(this.updateShader, 'vel'),
-        //     deltaTime: gl.getAttribLocation(this.updateShader, 'deltaTime')
-        // }
+        this.drawPrgLocs = {
+            pos: gl.getAttribLocation(this.drawShader.id, 'pos'),
+        }
 
-        //-----------------
-        this.updatePositionVAO1 = this.createVertexArray(gl, [
-            [this.updatePositionPrgLocs,pos, this.position1Buffer], 
+        console.log(this.updatePositionPrgLocs);
+        console.log(this.drawPrgLocs);
+
+        // setup VAOs -----------------
+        const updatePositionVAO1 = this.createVertexArray(gl, [
+            [this.updatePositionPrgLocs.pos, this.position1Buffer], 
             [this.updatePositionPrgLocs.vel, this.velocityBuffer]
         ]);
-        this.updatePositionVAO2 = this.createVertexArray(gl, [
+        const updatePositionVAO2 = this.createVertexArray(gl, [
             [this.updatePositionPrgLocs.pos, this.position2Buffer], 
             [this.updatePositionPrgLocs.vel, this.velocityBuffer],
         ]);
-        // TODO: 同上
+        const drawVAO1 = this.createVertexArray(gl, [
+            [this.drawPrgLocs.pos, this.position1Buffer],
+        ]);
+        const drawVAO2 = this.createVertexArray(gl, [
+            [this.drawPrgLocs.pos, this.position2Buffer],
+        ]);
 
-        //-----------------
-        tf1 = this.createTransformFeedback(gl, this.position1Buffer);
-        tf2 = this.createTransformFeedback(gl, this.position2Buffer);
+        // create transform feedbacks -----------------
+        const tf1 = this.createTransformFeedback(gl, this.position1Buffer);
+        const tf2 = this.createTransformFeedback(gl, this.position2Buffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+        
+        this.current = {
+            updateVa : updatePositionVAO1,
+            tf : tf2,
+            drawVa: drawVAO2
+        };
 
+        this.next = {
+            updateVa : updatePositionVAO2,
+            tf : tf1,
+            drawVa: drawVAO1
+        };
+
+    }
+
+    randomInsideSphere(r){
+        let result = vec3.create();
+        vec3.random(result, Math.random()*r);
+        return [result[0], result[1], result[2]];
     }
 
     createTransformFeedback(gl, buffer){
@@ -102,6 +132,7 @@ class WebGLRenderer extends Renderer {
         const buf = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buf);
         gl.bufferData(gl.ARRAY_BUFFER, sizeOrData, usage);
+        return buf;
     }
 
     createVertexArray(gl, nameBufferPair){
@@ -114,17 +145,30 @@ class WebGLRenderer extends Renderer {
         }
         return vao;
     }
-
-    randomInsideSphere(r){
-        let result = vec3.create();
-        vec3.random(result, Math.random()*r);
-        return [result[0], result[1], result[2]];
-    }
-
+    
     //---------------------------------------
     OnResize(width, height){
         this.width = width;
         this.height = height;
+    }
+
+    //---------------------------------------
+    beforeFrame(timestamp, timeDelta){
+        let gl = this.gl;
+        this.updateShader.use();
+        this.updateShader.setFloat("deltaTime", timeDelta*0.001);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindVertexArray(this.current.updateVa);
+        gl.enable(gl.RASTERIZER_DISCARD);
+
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.current.tf);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, this.particleNum);
+        gl.endTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+    
     }
 
     //---------------------------------------
@@ -137,6 +181,7 @@ class WebGLRenderer extends Renderer {
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.clearDepth(1.0);
         gl.enable(gl.DEPTH_TEST);
+        gl.depthMask(true);
         gl.depthFunc(gl.LEQUAL);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -156,17 +201,26 @@ class WebGLRenderer extends Renderer {
             0, 0, 0, 1
         );
         this.skyShader.setMat4("view", viewTrans);
+        this.drawShader.use();
+        this.drawShader.setMat4("proj", proj);
+        this.drawShader.setMat4("view", view);
 
         // render scene
         gl.viewport(0, 0, this.width, this.height);
-        gl.depthMask(true);
-        this.drawScene(this.shader);
+        this.drawShader.use();
+        gl.bindVertexArray(this.current.drawVa);
+        gl.drawArrays(gl.POINTS, 0, this.particleNum);
 
         //render background
         gl.viewport(0, 0, this.width, this.height);
         gl.depthMask(false);
         this.skyShader.use();
         this.renderCube();
+
+        // swap bfufer
+        const swap = this.current;
+        this.current = this.next;
+        this.next = swap;
     }
 
     // draw geometries with given shader
