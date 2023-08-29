@@ -56,15 +56,13 @@ class WebGLRenderer extends Renderer {
         let gl = this.gl;
         this.particleNum = 1000;
 
+        // setup random position and velocity
         let r = 10;
         const positions = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(r)).flat());
         const velocities = new Float32Array(new Array(this.particleNum).fill(0).map(_=>this.randomInsideSphere(2)).flat());
 
-        // console.log(positions);
-        // console.log(velocities);
-
         this.position1Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
-        this.position2Buffer = this.createBuffer(gl, positions, gl.DYNAMIC_DRAW);
+        this.position2Buffer = this.createBuffer(gl, 12 * this.particleNum, gl.DYNAMIC_DRAW);
         this.velocityBuffer = this.createBuffer(gl, velocities, gl.STATIC_DRAW);
 
         //-----------------
@@ -75,9 +73,6 @@ class WebGLRenderer extends Renderer {
         this.drawPrgLocs = {
             pos: gl.getAttribLocation(this.drawShader.id, 'pos'),
         }
-
-        console.log(this.updatePositionPrgLocs);
-        console.log(this.drawPrgLocs);
 
         // setup VAOs -----------------
         const updatePositionVAO1 = this.createVertexArray(gl, [
@@ -159,6 +154,7 @@ class WebGLRenderer extends Renderer {
         this.updateShader.setFloat("deltaTime", timeDelta*0.001);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.bindVertexArray(this.current.updateVa);
+        // Fragment shader wont run
         gl.enable(gl.RASTERIZER_DISCARD);
 
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.current.tf);
@@ -211,6 +207,8 @@ class WebGLRenderer extends Renderer {
         gl.bindVertexArray(this.current.drawVa);
         gl.drawArrays(gl.POINTS, 0, this.particleNum);
 
+        this.drawScene(this.shader);
+
         //render background
         gl.viewport(0, 0, this.width, this.height);
         gl.depthMask(false);
@@ -228,22 +226,6 @@ class WebGLRenderer extends Renderer {
         let gl = this.gl;
         let model = mat4.create();
         shader.use();
-        
-        model = mat4.create();
-        mat4.translate(model, model, vec3.fromValues(0, 0, 0));
-        mat4.rotate(model, model, 0, vec3.fromValues(0, 1, 0));
-        shader.setMat4("model", model);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture.checker_gray);
-        this.renderCube();
-
-        model = mat4.create();
-        mat4.translate(model, model, vec3.fromValues(1.8, -0.6, 0.6));
-        mat4.scale(model, model, vec3.fromValues(0.4, 0.4, 0.4));
-        shader.setMat4("model", model);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture.checker_gray);
-        this.renderCube();
 
         model = mat4.create();
         mat4.translate(model, model, vec3.fromValues(0, -1.0, 0));
