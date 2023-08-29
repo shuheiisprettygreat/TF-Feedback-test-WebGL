@@ -17,6 +17,9 @@ import updateFsSource from './shaders/update/update.frag?raw';
 import drawVsSource from './shaders/draw/draw.vert?raw';
 import drawFsSource from './shaders/draw/draw.frag?raw';
 
+import quadVsSource from './shaders/NDCQuad/NDCQuad.vert?raw';
+import quadFsSource from './shaders/NDCQuad/NDCQuad.frag?raw';
+
 class WebGLRenderer extends Renderer {
 
     //---------------------------------------
@@ -37,6 +40,8 @@ class WebGLRenderer extends Renderer {
         this.updateShader = new Shader(this.gl, updateVsSource, updateFsSource, ['newPos']);
         // shader for drawing particles
         this.drawShader = new Shader(this.gl, drawVsSource, drawFsSource);
+        // debug quad shader
+        this.quadShader = new Shader(this.gl, quadVsSource, quadFsSource);
 
         // setup datas
         this.vao = initVAO(this.gl);
@@ -90,6 +95,16 @@ class WebGLRenderer extends Renderer {
             [this.drawPrgLocs.pos, this.position2Buffer],
         ]);
 
+        // setup textures to save positions. -----------------
+        this.textureWidth = Math.ceil(Math.sqrt(this.particleNum));
+        this.textureHeight = Math.ceil(this.particleNum / this.textureWidth);
+        let numComponent = 3;
+        let textureData = new Float32Array(this.textureWidth * this.textureHeight * numComponent);
+        textureData.set(positions);
+
+        this.positionTexture1 = this.createTexture(gl, textureData, gl.RGB32F, gl.RGB, gl.FLOAT,  this.textureWidth, this.textureHeight);
+        this.positionTexture2 = this.createTexture(gl, null,        gl.RGB32F, gl.RGB, gl.FLOAT, this.textureWidth, this.textureHeight);
+
         // create transform feedbacks -----------------
         const tf1 = this.createTransformFeedback(gl, this.position1Buffer);
         const tf2 = this.createTransformFeedback(gl, this.position2Buffer);
@@ -139,6 +154,18 @@ class WebGLRenderer extends Renderer {
             gl.vertexAttribPointer(name, 3, gl.FLOAT, false, 0, 0);
         }
         return vao;
+    }
+
+    createTexture(gl, data, internalFormat, format, type, width, height) {
+        const result = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, result);
+        gl.texImage2D(gl.TEXTURE_2D, 0,internalFormat, width, height, 0, format, type, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        return result;
     }
     
     //---------------------------------------
@@ -219,6 +246,14 @@ class WebGLRenderer extends Renderer {
         const swap = this.current;
         this.current = this.next;
         this.next = swap;
+
+        // debug quad
+        let debugSize = this.width * 0.1;
+        gl.viewport(0, 0, debugSize, debugSize);
+        this.quadShader.use();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.positionTexture1);
+        this.renderQuad();
     }
 
     // draw geometries with given shader
@@ -232,7 +267,7 @@ class WebGLRenderer extends Renderer {
         mat4.scale(model, model, vec3.fromValues(5, 5, 5));
         shader.setMat4("model", model);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture.checker_colored);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture.checker_gray);
         this.renderPlane();
     }
 
@@ -245,6 +280,12 @@ class WebGLRenderer extends Renderer {
     renderPlane(){
         let gl = this.gl;
         gl.bindVertexArray(this.vao.plane);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    renderQuad(){
+        let gl = this.gl;
+        gl.bindVertexArray(this.vao.quad);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 }
