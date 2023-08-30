@@ -1,7 +1,7 @@
 import {Shader} from "../Shader.js";
 import {Renderer} from "../Renderer.js";
 import {Camera} from "../Camera.js";
-import {initVAO, initTexture} from "../init-buffers.js";
+import {initVAO, initTexture, initCubeVAO} from "../init-buffers.js";
 
 import {mat3, mat4, vec3} from "gl-matrix";
 
@@ -59,7 +59,7 @@ class WebGLRenderer extends Renderer {
     init(){
 
         let gl = this.gl;
-        this.particleNum = 1000;
+        this.particleNum = 500000;
 
         // setup random position and velocity
         let r = 10;
@@ -88,22 +88,18 @@ class WebGLRenderer extends Renderer {
             [this.updatePositionPrgLocs.pos, this.position2Buffer], 
             [this.updatePositionPrgLocs.vel, this.velocityBuffer],
         ]);
-        const drawVAO1 = this.createVertexArray(gl, [
-            [this.drawPrgLocs.pos, this.position1Buffer],
-        ]);
-        const drawVAO2 = this.createVertexArray(gl, [
-            [this.drawPrgLocs.pos, this.position2Buffer],
-        ]);
+        const drawVAO1 = this.createInstancedCubeVA(gl, this.position1Buffer);
+        const drawVAO2 = this.createInstancedCubeVA(gl, this.position2Buffer);
 
-        // setup textures to save positions. -----------------
-        this.textureWidth = Math.ceil(Math.sqrt(this.particleNum));
-        this.textureHeight = Math.ceil(this.particleNum / this.textureWidth);
-        let numComponent = 3;
-        let textureData = new Float32Array(this.textureWidth * this.textureHeight * numComponent);
-        textureData.set(positions);
+        // // setup textures to save positions. -----------------
+        // this.textureWidth = Math.ceil(Math.sqrt(this.particleNum));
+        // this.textureHeight = Math.ceil(this.particleNum / this.textureWidth);
+        // let numComponent = 3;
+        // let textureData = new Float32Array(this.textureWidth * this.textureHeight * numComponent);
+        // textureData.set(positions);
 
-        this.positionTexture1 = this.createTexture(gl, textureData, gl.RGB32F, gl.RGB, gl.FLOAT,  this.textureWidth, this.textureHeight);
-        this.positionTexture2 = this.createTexture(gl, null,        gl.RGB32F, gl.RGB, gl.FLOAT, this.textureWidth, this.textureHeight);
+        // this.positionTexture1 = this.createTexture(gl, textureData, gl.RGB32F, gl.RGB, gl.FLOAT,  this.textureWidth, this.textureHeight);
+        // this.positionTexture2 = this.createTexture(gl, null,        gl.RGB32F, gl.RGB, gl.FLOAT, this.textureWidth, this.textureHeight);
 
         // create transform feedbacks -----------------
         const tf1 = this.createTransformFeedback(gl, this.position1Buffer);
@@ -166,6 +162,19 @@ class WebGLRenderer extends Renderer {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.bindTexture(gl.TEXTURE_2D, null);
         return result;
+    }
+
+    createInstancedCubeVA(gl, positionBuffer){
+        this.va = initCubeVAO(gl);
+        gl.bindVertexArray(this.va);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            let loc = gl.getAttribLocation(this.drawShader.id, 'instancePosition');
+            console.log(loc);
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+            gl.vertexAttribDivisor(loc, 1);
+        gl.bindVertexArray(null);
+        return this.va;
     }
     
     //---------------------------------------
@@ -230,10 +239,8 @@ class WebGLRenderer extends Renderer {
 
         // render scene
         gl.viewport(0, 0, this.width, this.height);
-        this.drawShader.use();
-        gl.bindVertexArray(this.current.drawVa);
-        gl.drawArrays(gl.POINTS, 0, this.particleNum);
-
+        this.drawCubes(gl)
+        
         this.drawScene(this.shader);
 
         //render background
@@ -246,14 +253,19 @@ class WebGLRenderer extends Renderer {
         const swap = this.current;
         this.current = this.next;
         this.next = swap;
+    }
 
-        // debug quad
-        let debugSize = this.width * 0.1;
-        gl.viewport(0, 0, debugSize, debugSize);
-        this.quadShader.use();
+    drawCubes(gl){
+        let model = mat4.create();
+        mat4.scale(model, model, vec3.fromValues(0.01, 0.01, 0.01));
+
+        this.drawShader.use();
+        gl.bindTexture(gl.TEXTURE_2D, this.texture.checker_gray);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.positionTexture1);
-        this.renderQuad();
+        this.drawShader.setInt("tex", 0);
+        this.drawShader.setMat4("model", model);
+        gl.bindVertexArray(this.current.drawVa);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, this.particleNum);
     }
 
     // draw geometries with given shader
